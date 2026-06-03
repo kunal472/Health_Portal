@@ -58,7 +58,7 @@ For a detailed breakdown of the cryptographic mechanisms, database policies, and
 Ensure you have Node.js installed (v18+ recommended) and a package manager like npm, yarn, or pnpm.
 
 ### 2. Environment Setup
-Create a `.env.local` file in the root directory based on [.env.example](file:///d:/projects/Health_Portal/.env.example):
+Create a `.env.local` file in the root directory based on [.env.example]:
 
 ```env
 # Clerk Authentication
@@ -78,7 +78,7 @@ DAILY_DOMAIN=your_daily_domain
 
 ### 3. Database Initialization
 1. Spin up a new PostgreSQL database on [Supabase](https://supabase.com).
-2. Execute the DDL script in [schema.sql](file:///d:/projects/Health_Portal/schema.sql) using the Supabase SQL Editor. This will configure the tables, default Row Level Security (RLS) policies, indexes, and custom RPC functions.
+2. Execute the DDL script in [schema.sql] using the Supabase SQL Editor. This will configure the tables, default Row Level Security (RLS) policies, indexes, and custom RPC functions.
 
 ### 4. Installation & Local Development
 Install dependencies and run the server locally:

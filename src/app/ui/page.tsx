@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from "react";
 import {
   Shield,
@@ -11,6 +13,9 @@ import {
   ChevronRight,
   ChevronLeft,
 } from "lucide-react";
+import { useEncryption, EncryptionService } from "@/lib/crypto/encryption";
+import { supabase } from "@/lib/supabase/client";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // ============================================
 // TRUST BADGE (Session Encryption Indicator)
@@ -417,8 +422,77 @@ const SymptomWizard = ({ onComplete }) => {
 
 export default function TrustCenteredUX() {
   const [activeDemo, setActiveDemo] = useState("badge");
-  const [isEncrypted, setIsEncrypted] = useState(false);
-  const [sessionActive, setSessionActive] = useState(false);
+  const [sessionActive, setSessionActive] = useState(true);
+
+  // E2EE States
+  const { isUnlocked, unlock, lock, encrypt, decrypt, error: encryptionError } = useEncryption();
+  const [passphrase, setPassphrase] = useState("");
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [records, setRecords] = useState<any[]>([]);
+  const [loadingRecords, setLoadingRecords] = useState(false);
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsUnlocking(true);
+    try {
+      let saltBase64 = "mock_salt_base64==";
+      try {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("encryption_salt")
+          .single();
+        if (profile?.encryption_salt) {
+          saltBase64 = profile.encryption_salt;
+        }
+      } catch {}
+
+      const salt = EncryptionService.base64ToSalt(saltBase64);
+      const success = await unlock(passphrase, salt);
+      if (success) {
+        loadRecords();
+      }
+    } catch (err) {
+      console.error("Unlock error:", err);
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
+  const loadRecords = async () => {
+    setLoadingRecords(true);
+    try {
+      const response = await fetch("/api/medical-records");
+      const result = await response.json();
+      if (response.ok && result.success) {
+        const encryptedRecords = result.records || [];
+        const decrypted = await Promise.all(
+          encryptedRecords.map(async (rec: any) => {
+            try {
+              const decryptedData = await decrypt({
+                iv: rec.encrypted_iv,
+                ciphertext: rec.encrypted_data,
+              });
+              return {
+                ...decryptedData,
+                id: rec.id,
+                type: rec.record_type,
+                date: rec.record_date,
+                provider: rec.provider_name,
+              };
+            } catch (err) {
+              console.error("Decryption failed for record:", rec.id, err);
+              return null;
+            }
+          })
+        );
+        setRecords(decrypted.filter((r) => r !== null));
+      }
+    } catch (err) {
+      console.error("Error loading records:", err);
+    } finally {
+      setLoadingRecords(false);
+    }
+  };
 
   // Sample prescription data
   const samplePrescriptions = [
@@ -480,16 +554,97 @@ export default function TrustCenteredUX() {
     },
   ];
 
-  const simulateEncryption = () => {
-    setSessionActive(true);
-    setIsEncrypted(false);
-    setTimeout(() => setIsEncrypted(true), 1500);
+  const handleWizardComplete = async (data: any) => {
+    if (!isUnlocked) {
+      alert("Please unlock your session with your passphrase first!");
+      return;
+    }
+    try {
+      const encrypted = await encrypt(data);
+      const response = await fetch("/api/medical-records", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          encryptedIv: encrypted.iv,
+          encryptedData: encrypted.ciphertext,
+          recordType: "prescription",
+          recordDate: new Date().toISOString().split("T")[0],
+          providerName: "Self-Reported",
+        }),
+      });
+
+      const result = await response.json();
+      if (response.ok && result.success) {
+        alert("Form submitted! Symptom data encrypted client-side and saved securely to Supabase.");
+        loadRecords();
+      } else {
+        alert(result.error || "Failed to save record.");
+      }
+    } catch (err) {
+      console.error("Encryption/Submission error:", err);
+      alert("Failed to encrypt and save record. Please check your passphrase.");
+    }
   };
 
-  const handleWizardComplete = (data) => {
-    console.log("Symptom data collected:", data);
-    alert("Form submitted! Data encrypted and sent to your doctor.");
-  };
+  if (!isUnlocked) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 p-8 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
+          <div className="text-center mb-6">
+            <Lock className="w-12 h-12 text-indigo-600 mx-auto mb-3" />
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">Unlock Secure Health Portal</h1>
+            <p className="text-sm text-gray-600">
+              Please enter your E2EE passphrase to derive your local AES key. 
+              Plaintext health data is never sent to the server.
+            </p>
+          </div>
+
+          <form onSubmit={handleUnlock} className="space-y-4">
+            <div>
+              <label htmlFor="passphrase" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                Passphrase (Min. 8 characters)
+              </label>
+              <input
+                id="passphrase"
+                type="password"
+                required
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                placeholder="e.g. passphrase123"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-gray-800"
+              />
+            </div>
+
+            {encryptionError && (
+              <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{encryptionError}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={isUnlocking || passphrase.length < 8}
+              className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isUnlocking ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Deriving Key...
+                </>
+              ) : (
+                "Unlock Session"
+              )}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback to mock prescriptions if no DB records found
+  const displayPrescriptions = records.filter(r => r.type === "prescription").length > 0
+    ? records.filter(r => r.type === "prescription")
+    : samplePrescriptions;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 p-8">
@@ -550,28 +705,32 @@ export default function TrustCenteredUX() {
               <h2 className="text-xl font-bold mb-4">Trust Badge Demo</h2>
               <p className="text-gray-600 mb-6">
                 Visual indicator that shows users their session is encrypted.
-                Builds confidence in data security.
+                Your session is currently unlocked with AES-256 E2EE.
               </p>
               <button
-                onClick={simulateEncryption}
-                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                onClick={lock}
+                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
-                Simulate Login
+                Lock Session
               </button>
             </div>
             <TrustBadge
-              isEncrypted={isEncrypted}
+              isEncrypted={isUnlocked}
               isSessionActive={sessionActive}
             />
           </div>
         )}
 
         {activeDemo === "timeline" && (
-          <PrescriptionTimeline prescriptions={samplePrescriptions} />
+          <ErrorBoundary title="Prescription Timeline Error" onReset={() => setActiveDemo("badge")}>
+            <PrescriptionTimeline prescriptions={displayPrescriptions} />
+          </ErrorBoundary>
         )}
 
         {activeDemo === "wizard" && (
-          <SymptomWizard onComplete={handleWizardComplete} />
+          <ErrorBoundary title="Symptom Wizard Error" onReset={() => setActiveDemo("badge")}>
+            <SymptomWizard onComplete={handleWizardComplete} />
+          </ErrorBoundary>
         )}
 
         {/* Accessibility Notes */}

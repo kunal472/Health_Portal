@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect, useRef } from "react";
 import {
   Video,
@@ -13,6 +15,8 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // ============================================
 // PRE-CALL DEVICE CHECKER
@@ -144,7 +148,7 @@ const DeviceChecker = ({ onComplete }) => {
 // VIDEO CALL INTERFACE
 // ============================================
 
-const VideoCallInterface = ({ onEndCall }) => {
+const VideoCallInterface = ({ sessionData, onEndCall }) => {
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isAudioOn, setIsAudioOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -229,121 +233,142 @@ const VideoCallInterface = ({ onEndCall }) => {
 
   return (
     <div className="bg-gray-900 rounded-xl shadow-2xl overflow-hidden">
-      {/* Video Grid */}
-      <div className="relative aspect-video bg-black">
-        {/* Remote Video (Doctor) */}
-        <div className="w-full h-full">
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="w-full h-full object-cover"
+      {sessionData ? (
+        <div className="w-full aspect-video bg-black">
+          <iframe
+            src={`${sessionData.roomUrl}?t=${sessionData.token}`}
+            allow="camera; microphone; display-capture; autoplay"
+            className="w-full h-full border-0"
+            title="Daily.co Video Call"
           />
-          <div className="absolute top-4 left-4 bg-black/60 backdrop-blur px-3 py-1 rounded-full text-white text-sm">
-            Dr. Sarah Johnson
+          <div className="bg-gray-800 p-4 flex justify-center">
+            <button
+              onClick={handleEndCall}
+              className="p-4 bg-red-600 rounded-full hover:bg-red-700 transition-colors"
+            >
+              <PhoneOff className="w-6 h-6 text-white" />
+            </button>
           </div>
         </div>
-
-        {/* Local Video (Picture-in-Picture) */}
-        <div className="absolute bottom-4 right-4 w-48 h-36 bg-gray-800 rounded-lg overflow-hidden shadow-xl border-2 border-white/20">
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-full object-cover"
-          />
-          {!isVideoOn && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-700">
-              <VideoOff className="w-8 h-8 text-gray-400" />
+      ) : (
+        <>
+          {/* Video Grid */}
+          <div className="relative aspect-video bg-black">
+            {/* Remote Video (Doctor) */}
+            <div className="w-full h-full">
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute top-4 left-4 bg-black/60 backdrop-blur px-3 py-1 rounded-full text-white text-sm">
+                Dr. Sarah Johnson
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Call Status */}
-        <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-600 px-3 py-1 rounded-full">
-          <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-          <span className="text-white text-sm font-medium">
-            {formatDuration(callDuration)}
-          </span>
-        </div>
+            {/* Local Video (Picture-in-Picture) */}
+            <div className="absolute bottom-4 right-4 w-48 h-36 bg-gray-800 rounded-lg overflow-hidden shadow-xl border-2 border-white/20">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+              {!isVideoOn && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-700">
+                  <VideoOff className="w-8 h-8 text-gray-400" />
+                </div>
+              )}
+            </div>
 
-        {/* Recording Indicator */}
-        {isRecording && (
-          <div className="absolute top-14 right-4 bg-red-600 px-3 py-1 rounded-full text-white text-xs font-medium">
-            🔴 Recording
+            {/* Call Status */}
+            <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-600 px-3 py-1 rounded-full">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+              <span className="text-white text-sm font-medium">
+                {formatDuration(callDuration)}
+              </span>
+            </div>
+
+            {/* Recording Indicator */}
+            {isRecording && (
+              <div className="absolute top-14 right-4 bg-red-600 px-3 py-1 rounded-full text-white text-xs font-medium">
+                🔴 Recording
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Controls */}
-      <div className="bg-gray-800 p-4">
-        <div className="flex items-center justify-center gap-4">
-          {/* Toggle Video */}
-          <button
-            onClick={toggleVideo}
-            className={`p-4 rounded-full transition-colors ${
-              isVideoOn
-                ? "bg-gray-700 hover:bg-gray-600"
-                : "bg-red-600 hover:bg-red-700"
-            }`}
-          >
-            {isVideoOn ? (
-              <Video className="w-6 h-6 text-white" />
-            ) : (
-              <VideoOff className="w-6 h-6 text-white" />
-            )}
-          </button>
+          {/* Controls */}
+          <div className="bg-gray-800 p-4">
+            <div className="flex items-center justify-center gap-4">
+              {/* Toggle Video */}
+              <button
+                onClick={toggleVideo}
+                className={`p-4 rounded-full transition-colors ${
+                  isVideoOn
+                    ? "bg-gray-700 hover:bg-gray-600"
+                    : "bg-red-600 hover:bg-red-700"
+                }`}
+              >
+                {isVideoOn ? (
+                  <Video className="w-6 h-6 text-white" />
+                ) : (
+                  <VideoOff className="w-6 h-6 text-white" />
+                )}
+              </button>
 
-          {/* Toggle Audio */}
-          <button
-            onClick={toggleAudio}
-            className={`p-4 rounded-full transition-colors ${
-              isAudioOn
-                ? "bg-gray-700 hover:bg-gray-600"
-                : "bg-red-600 hover:bg-red-700"
-            }`}
-          >
-            {isAudioOn ? (
-              <Mic className="w-6 h-6 text-white" />
-            ) : (
-              <MicOff className="w-6 h-6 text-white" />
-            )}
-          </button>
+              {/* Toggle Audio */}
+              <button
+                onClick={toggleAudio}
+                className={`p-4 rounded-full transition-colors ${
+                  isAudioOn
+                    ? "bg-gray-700 hover:bg-gray-600"
+                    : "bg-red-600 hover:bg-red-700"
+                }`}
+              >
+                {isAudioOn ? (
+                  <Mic className="w-6 h-6 text-white" />
+                ) : (
+                  <MicOff className="w-6 h-6 text-white" />
+                )}
+              </button>
 
-          {/* Screen Share */}
-          <button
-            onClick={toggleScreenShare}
-            className={`p-4 rounded-full transition-colors ${
-              isScreenSharing
-                ? "bg-blue-600 hover:bg-blue-700"
-                : "bg-gray-700 hover:bg-gray-600"
-            }`}
-          >
-            <Monitor className="w-6 h-6 text-white" />
-          </button>
+              {/* Screen Share */}
+              <button
+                onClick={toggleScreenShare}
+                className={`p-4 rounded-full transition-colors ${
+                  isScreenSharing
+                    ? "bg-blue-600 hover:bg-blue-700"
+                    : "bg-gray-700 hover:bg-gray-600"
+                }`}
+              >
+                <Monitor className="w-6 h-6 text-white" />
+              </button>
 
-          {/* End Call */}
-          <button
-            onClick={handleEndCall}
-            className="p-4 bg-red-600 rounded-full hover:bg-red-700 transition-colors"
-          >
-            <PhoneOff className="w-6 h-6 text-white" />
-          </button>
+              {/* End Call */}
+              <button
+                onClick={handleEndCall}
+                className="p-4 bg-red-600 rounded-full hover:bg-red-700 transition-colors"
+              >
+                <PhoneOff className="w-6 h-6 text-white" />
+              </button>
 
-          {/* Toggle Recording */}
-          <button
-            onClick={() => setIsRecording(!isRecording)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-              isRecording
-                ? "bg-red-600 hover:bg-red-700 text-white"
-                : "bg-gray-700 hover:bg-gray-600 text-white"
-            }`}
-          >
-            {isRecording ? "Stop Recording" : "Start Recording"}
-          </button>
-        </div>
-      </div>
+              {/* Toggle Recording */}
+              <button
+                onClick={() => setIsRecording(!isRecording)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  isRecording
+                    ? "bg-red-600 hover:bg-red-700 text-white"
+                    : "bg-gray-700 hover:bg-gray-600 text-white"
+                }`}
+              >
+                {isRecording ? "Stop Recording" : "Start Recording"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -355,28 +380,59 @@ const VideoCallInterface = ({ onEndCall }) => {
 export default function TelehealthSuite() {
   const [stage, setStage] = useState("pre-check"); // pre-check, waiting, active, ended
   const [callSummary, setCallSummary] = useState(null);
+  const [sessionData, setSessionData] = useState(null);
+  const [appointmentId, setAppointmentId] = useState(null);
 
-  const handlePreCheckComplete = () => {
-    setStage("waiting");
-    // Simulate doctor joining after 3 seconds
-    setTimeout(() => {
-      setStage("active");
-    }, 3000);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      setAppointmentId(params.get("appointmentId"));
+    }
+  }, []);
+
+  const handlePreCheckComplete = async () => {
+    if (appointmentId) {
+      setStage("waiting");
+      try {
+        const { data, error } = await supabase
+          .from("telehealth_sessions")
+          .select("room_url, patient_token")
+          .eq("appointment_id", appointmentId)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setSessionData({
+            roomUrl: data.room_url,
+            token: data.patient_token,
+          });
+          setStage("active");
+        } else {
+          alert("Telehealth session not found for this appointment.");
+          setStage("pre-check");
+        }
+      } catch (err) {
+        console.error("Error loading session:", err);
+        alert("Failed to load telehealth session. Falling back to simulation.");
+        setTimeout(() => {
+          setStage("active");
+        }, 1500);
+      }
+    } else {
+      setStage("waiting");
+      setTimeout(() => {
+        setStage("active");
+      }, 2000);
+    }
   };
 
   const handleEndCall = (duration) => {
     setStage("ended");
     setCallSummary({
-      duration,
+      duration: typeof duration === "number" ? duration : 0,
       timestamp: new Date().toISOString(),
       participants: ["Patient", "Dr. Sarah Johnson"],
-    });
-
-    // In production: Save to audit logs
-    console.log("Saving call record:", {
-      duration,
-      encrypted_notes: "Base64CipherText...",
-      hipaa_consent: true,
     });
   };
 
@@ -400,7 +456,9 @@ export default function TelehealthSuite() {
 
         {/* Stage: Pre-Check */}
         {stage === "pre-check" && (
-          <DeviceChecker onComplete={handlePreCheckComplete} />
+          <ErrorBoundary title="Device Check Failure" onReset={() => setStage("pre-check")}>
+            <DeviceChecker onComplete={handlePreCheckComplete} />
+          </ErrorBoundary>
         )}
 
         {/* Stage: Waiting Room */}
@@ -417,7 +475,11 @@ export default function TelehealthSuite() {
         )}
 
         {/* Stage: Active Call */}
-        {stage === "active" && <VideoCallInterface onEndCall={handleEndCall} />}
+        {stage === "active" && (
+          <ErrorBoundary title="Telehealth Media Failure" onReset={() => setStage("pre-check")}>
+            <VideoCallInterface sessionData={sessionData} onEndCall={handleEndCall} />
+          </ErrorBoundary>
+        )}
 
         {/* Stage: Call Ended */}
         {stage === "ended" && callSummary && (

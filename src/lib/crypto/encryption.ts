@@ -5,12 +5,12 @@
 
 import React from "react";
 
-export interface EncryptedData {
+interface EncryptedData {
   iv: string;
   ciphertext: string;
 }
 
-export interface KeyMaterial {
+interface KeyMaterial {
   salt: Uint8Array;
   version: number;
 }

@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from "react";
 import {
   Calendar,
@@ -9,9 +11,11 @@ import {
   Loader2,
   Shield,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // ============================================
-// SIMULATED AUTHENTICATION & API
+// SIMULATED AUTHENTICATION
 // ============================================
 
 const mockUser = {
@@ -20,84 +24,6 @@ const mockUser = {
   fullName: "John Doe",
   encryptionSalt: "mock_salt_base64==",
 };
-
-const mockTimeSlots = [
-  {
-    id: "slot_1",
-    doctorId: "dr_001",
-    doctorName: "Dr. Sarah Johnson",
-    specialty: "Cardiology",
-    date: "2026-02-05",
-    time: "09:00",
-    isBooked: false,
-  },
-  {
-    id: "slot_2",
-    doctorId: "dr_001",
-    doctorName: "Dr. Sarah Johnson",
-    specialty: "Cardiology",
-    date: "2026-02-05",
-    time: "10:00",
-    isBooked: false,
-  },
-  {
-    id: "slot_3",
-    doctorId: "dr_001",
-    doctorName: "Dr. Sarah Johnson",
-    specialty: "Cardiology",
-    date: "2026-02-05",
-    time: "11:00",
-    isBooked: false,
-  },
-  {
-    id: "slot_4",
-    doctorId: "dr_002",
-    doctorName: "Dr. Michael Chen",
-    specialty: "Dermatology",
-    date: "2026-02-06",
-    time: "14:00",
-    isBooked: false,
-  },
-  {
-    id: "slot_5",
-    doctorId: "dr_002",
-    doctorName: "Dr. Michael Chen",
-    specialty: "Dermatology",
-    date: "2026-02-06",
-    time: "15:00",
-    isBooked: false,
-  },
-];
-
-class MockAPI {
-  static bookedSlots = new Set();
-
-  static async getAvailableSlots(date?: string) {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    return mockTimeSlots.filter(
-      (slot) => !this.bookedSlots.has(slot.id) && (!date || slot.date === date),
-    );
-  }
-
-  static async bookAppointment(
-    slotId: string,
-    patientId: string,
-    type: string,
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    if (this.bookedSlots.has(slotId)) {
-      return { success: false, error: "Slot already booked" };
-    }
-
-    this.bookedSlots.add(slotId);
-    return {
-      success: true,
-      appointmentId: `appt_${Date.now()}`,
-      roomUrl: `https://smartclinic.daily.co/room-${Date.now()}`,
-    };
-  }
-}
 
 // ============================================
 // TRUST BADGE COMPONENT
@@ -200,9 +126,31 @@ const SelectTimeSlotStep = ({
 
   const loadSlots = async () => {
     setLoading(true);
-    const availableSlots = await MockAPI.getAvailableSlots(selectedDate);
-    setSlots(availableSlots);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from("time_slots")
+        .select("*")
+        .eq("is_booked", false)
+        .eq("slot_date", selectedDate);
+
+      if (error) throw error;
+
+      const mappedSlots = (data || []).map((slot) => ({
+        id: slot.id,
+        doctorId: slot.doctor_id,
+        doctorName: slot.doctor_name,
+        specialty: slot.slot_type || "General Consultation",
+        date: slot.slot_date,
+        time: slot.slot_time.substring(0, 5),
+        isBooked: slot.is_booked,
+      }));
+      setSlots(mappedSlots);
+    } catch (err) {
+      console.error("Error loading slots:", err);
+      setSlots([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {
@@ -449,19 +397,30 @@ export default function AppointmentBooking() {
     setLoading(true);
 
     try {
-      const result = await MockAPI.bookAppointment(
-        selectedSlot.id,
-        mockUser.id,
-        appointmentType,
-      );
+      const response = await fetch("/api/appointments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          timeSlotId: selectedSlot.id,
+          appointmentType: appointmentType,
+        }),
+      });
 
-      if (result.success) {
-        setAppointmentResult(result);
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setAppointmentResult({
+          appointmentId: result.appointmentId,
+          roomUrl: result.roomUrl,
+        });
         setShowSuccess(true);
       } else {
-        alert(result.error);
+        alert(result.error || "Booking failed. Please try again.");
       }
     } catch (error) {
+      console.error("Booking error:", error);
       alert("Booking failed. Please try again.");
     } finally {
       setLoading(false);
@@ -557,40 +516,42 @@ export default function AppointmentBooking() {
 
           <StepIndicator currentStep={step} totalSteps={totalSteps} />
 
-          {step === 1 && (
-            <SelectDateStep
-              onNext={() => setStep(2)}
-              selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
-            />
-          )}
+          <ErrorBoundary title="Booking Wizard Error" onReset={() => setStep(1)}>
+            {step === 1 && (
+              <SelectDateStep
+                onNext={() => setStep(2)}
+                selectedDate={selectedDate}
+                setSelectedDate={setSelectedDate}
+              />
+            )}
 
-          {step === 2 && (
-            <SelectTimeSlotStep
-              onNext={() => setStep(3)}
-              selectedDate={selectedDate}
-              selectedSlot={selectedSlot}
-              setSelectedSlot={setSelectedSlot}
-            />
-          )}
+            {step === 2 && (
+              <SelectTimeSlotStep
+                onNext={() => setStep(3)}
+                selectedDate={selectedDate}
+                selectedSlot={selectedSlot}
+                setSelectedSlot={setSelectedSlot}
+              />
+            )}
 
-          {step === 3 && (
-            <SelectTypeStep
-              onNext={() => setStep(4)}
-              appointmentType={appointmentType}
-              setAppointmentType={setAppointmentType}
-            />
-          )}
+            {step === 3 && (
+              <SelectTypeStep
+                onNext={() => setStep(4)}
+                appointmentType={appointmentType}
+                setAppointmentType={setAppointmentType}
+              />
+            )}
 
-          {step === 4 && (
-            <ConfirmationStep
-              selectedDate={selectedDate}
-              selectedSlot={selectedSlot}
-              appointmentType={appointmentType}
-              onConfirm={handleConfirm}
-              loading={loading}
-            />
-          )}
+            {step === 4 && (
+              <ConfirmationStep
+                selectedDate={selectedDate}
+                selectedSlot={selectedSlot}
+                appointmentType={appointmentType}
+                onConfirm={handleConfirm}
+                loading={loading}
+              />
+            )}
+          </ErrorBoundary>
 
           {step > 1 && (
             <button
