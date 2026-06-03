@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { createDailyRoom } from "@/utils/helper";
 
 export async function GET(req: NextRequest) {
   try {

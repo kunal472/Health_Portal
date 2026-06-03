@@ -1,9 +1,10 @@
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
 
-async function createDailyRoom(appointmentId: string, patientId: string) {
+export async function createDailyRoom(appointmentId: string, patientId: string) {
   const DAILY_API_KEY = process.env.DAILY_API_KEY!;
   const DAILY_DOMAIN = process.env.DAILY_DOMAIN!;
 
